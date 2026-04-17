@@ -61,10 +61,10 @@ fun DiaryDetailScreen(
     onNavigateBack: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val isRecording by viewModel.isRecording.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val dateFormatter = DateTimeFormatter.ofPattern("yyyy年M月d日")
     val micPermissionState = rememberPermissionState(Manifest.permission.RECORD_AUDIO)
-    var isRecording by remember { mutableStateOf(false) }
 
     LaunchedEffect(uiState.error) {
         uiState.error?.let {
@@ -152,7 +152,11 @@ fun DiaryDetailScreen(
                     IconButton(
                         onClick = {
                             if (micPermissionState.status.isGranted) {
-                                isRecording = !isRecording
+                                if (isRecording) {
+                                    viewModel.stopVoiceRecording()
+                                } else {
+                                    viewModel.startVoiceRecording()
+                                }
                             } else {
                                 micPermissionState.launchPermissionRequest()
                             }

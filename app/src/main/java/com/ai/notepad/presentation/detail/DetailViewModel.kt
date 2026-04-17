@@ -9,6 +9,7 @@ import com.ai.notepad.domain.model.DiaryEntry
 import com.ai.notepad.domain.usecase.SaveDiaryUseCase
 import com.ai.notepad.domain.usecase.SummarizeDailyUseCase
 import com.ai.notepad.util.Result
+import com.ai.notepad.util.VoiceRecognitionService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -24,7 +25,8 @@ class DetailViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val diaryRepository: DiaryRepository,
     private val saveDiaryUseCase: SaveDiaryUseCase,
-    private val summarizeDailyUseCase: SummarizeDailyUseCase
+    private val summarizeDailyUseCase: SummarizeDailyUseCase,
+    private val voiceRecognitionService: VoiceRecognitionService
 ) : ViewModel() {
 
     companion object {
@@ -36,9 +38,29 @@ class DetailViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(DetailUiState())
     val uiState: StateFlow<DetailUiState> = _uiState.asStateFlow()
 
+    private val _isRecording = MutableStateFlow(false)
+    val isRecording: StateFlow<Boolean> = _isRecording.asStateFlow()
+
     init {
         Log.d(TAG, "DetailViewModel initialized with entryId: $entryId")
         loadEntry()
+
+        // Observe voice recognition state
+        viewModelScope.launch {
+            voiceRecognitionService.isListening.collect { listening ->
+                _isRecording.value = listening
+            }
+        }
+
+        // Observe voice recognition errors
+        viewModelScope.launch {
+            voiceRecognitionService.error.collect { error ->
+                error?.let {
+                    _uiState.update { state -> state.copy(error = it) }
+                    voiceRecognitionService.clearError()
+                }
+            }
+        }
     }
 
     private fun loadEntry() {
@@ -151,5 +173,26 @@ class DetailViewModel @Inject constructor(
 
     fun clearSaveSuccess() {
         _uiState.update { it.copy(saveSuccess = false) }
+    }
+
+    fun startVoiceRecording() {
+        Log.d(TAG, "Starting voice recording")
+        voiceRecognitionService.startListening { result ->
+            Log.d(TAG, "Voice recognition result: $result")
+            // Append the recognized text to the current text
+            val currentText = _uiState.value.editedText
+            val newText = if (currentText.isBlank()) result else "$currentText\n$result"
+            updateText(newText)
+        }
+    }
+
+    fun stopVoiceRecording() {
+        Log.d(TAG, "Stopping voice recording")
+        voiceRecognitionService.stopListening()
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        voiceRecognitionService.release()
     }
 }
